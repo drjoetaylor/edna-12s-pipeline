@@ -176,6 +176,207 @@ species_abundance_CLARE.csv
 ```
 
 ---
+---
+
+# Blank correction and contamination cleanup
+
+After taxonomy assignment with the CLARE reference (`12s_verts.trimmed_RiazV5.sintax.fasta`), the repository includes an additional workflow to identify and correct potential contamination using blank controls.
+
+This workflow:
+
+- keeps fish taxa (Actinopteri and Hyperoartia are not removed)
+- separates **PCR blanks**, **extraction blanks**, and **site blanks**
+- calculates blank-based limits of detection (LOD)
+- generates cleaned ASV matrices using:
+  - laboratory blanks only
+  - site blanks only
+  - both blank types
+- extracts the **lowest accepted taxonomic level and confidence**
+- produces diagnostic tables to evaluate spillover into site blanks
+
+---
+
+# Workflow overview
+
+The cleanup stage occurs after taxonomy assignment:
+
+```
+FASTQ
+  ↓
+cutadapt
+  ↓
+DADA2 denoising
+  ↓
+ASV table
+  ↓
+SINTAX taxonomy (CLARE database)
+  ↓
+Create cleanup input matrix
+  ↓
+Blank contamination correction
+  ↓
+Cleaned ASV tables
+```
+
+---
+
+# Required input
+
+These scripts expect the workflow output:
+
+```
+results/asv_taxonomy_abundance_CLARE.csv
+```
+
+This file is produced by:
+
+```
+scripts/03_sintax_assign.R
+```
+
+---
+
+# Step 1 — Create cleanup input matrix
+
+Run:
+
+```r
+source("scripts/05_make_cleanup_input_from_CLARE.R")
+```
+
+This converts the ASV-level CLARE output into a taxon × sample matrix suitable for blank filtering.
+
+Output:
+
+```
+results/ncl_matrix_raw.csv
+```
+
+---
+
+# Step 2 — Run blank contamination cleanup
+
+Run:
+
+```r
+source("scripts/06_blank_cleanup_from_workflow.R")
+```
+
+This script:
+
+- identifies blank types
+- calculates blank-based LOD thresholds
+- applies contamination filtering
+- generates diagnostic summaries
+
+---
+
+# Output files
+
+Key outputs are written to:
+
+```
+results/
+```
+
+### Cleaned ASV matrices
+
+| File | Description |
+|-----|-------------|
+| `ncl_cleaned_labLOD.csv` | contamination corrected using PCR + extraction blanks |
+| `ncl_cleaned_siteLOD.csv` | contamination corrected using site blanks |
+| `ncl_cleaned_bothLOD.csv` | contamination corrected using both blank types |
+
+---
+
+### Presence / absence matrices
+
+```
+ncl_cleaned_labLOD_pa.csv
+ncl_cleaned_siteLOD_pa.csv
+ncl_cleaned_bothLOD_pa.csv
+```
+
+---
+
+### Diagnostic tables
+
+| File | Purpose |
+|----|----|
+| `cleanup_blank_diagnostic_table.csv` | evaluates blank spillover patterns |
+| `cleanup_sample_classification.csv` | shows blank/sample classification |
+| `cleanup_summary.csv` | summary of read counts before and after filtering |
+
+---
+
+### Long format data
+
+```
+ncl_cleaned_long.csv
+```
+
+Contains:
+
+- ASV / taxon
+- taxonomy
+- lowest taxonomic level
+- confidence score
+- sample name
+- site
+- raw reads
+- cleaned reads
+
+---
+
+# Recommended interpretation workflow
+
+Start by comparing:
+
+```
+ncl_cleaned_labLOD.csv
+ncl_cleaned_bothLOD.csv
+```
+
+and inspect:
+
+```
+cleanup_blank_diagnostic_table.csv
+```
+
+This helps determine whether **site blanks represent local spillover** or true contamination before deciding how aggressively to filter.
+
+---
+
+# Copy-paste tutorial
+
+### Run the full workflow
+
+```r
+source("scripts/run_pipeline.R")
+```
+
+---
+
+### Run cleanup only
+
+```r
+source("scripts/05_make_cleanup_input_from_CLARE.R")
+source("scripts/06_blank_cleanup_from_workflow.R")
+```
+
+---
+
+# Notes
+
+Large files are intentionally excluded from the repository:
+
+- FASTQ files
+- reference databases
+- results
+
+These should be added locally before running the pipeline.
+
+---
 
 ## Notes
 
