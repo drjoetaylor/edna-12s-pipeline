@@ -16,10 +16,14 @@ seqtab_asv_file <- file.path("results", "seqtab_asv.rds")
 
 if (!file.exists(asv_fasta)) stop("Missing ASV fasta: results/asvs.nochim.fasta")
 if (!file.exists(asv_lookup_file)) stop("Missing ASV lookup: results/asv_lookup.tsv")
-if (!file.exists(seqtab_asv_file)) stop("Missing seqtab_asv.rds")
+if (!file.exists(seqtab_asv_file)) stop("Missing ASV table: results/seqtab_asv.rds")
 
 asv_lookup <- read_tsv(asv_lookup_file, show_col_types = FALSE)
 seqtab_asv <- readRDS(seqtab_asv_file)
+
+# =========================
+# Helper functions
+# =========================
 
 resolve_reference <- function(ref_path) {
   if (!file.exists(ref_path)) {
@@ -33,7 +37,7 @@ resolve_reference <- function(ref_path) {
     )
 
     if (!file.exists(out_file)) {
-      cat("Unzipping:", basename(ref_path), "\n")
+      cat("Unzipping reference database:", basename(ref_path), "\n")
       con_in <- gzfile(ref_path, open = "rb")
       con_out <- file(out_file, open = "wb")
       repeat {
@@ -67,7 +71,10 @@ run_sintax <- function(usearch, asv_fa, db_fa, out_tsv, cutoff = 0.7, threads = 
 
 read_sintax_simple <- function(path, db_name) {
   x <- read.delim(path, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-  if (ncol(x) < 2) stop("Unexpected SINTAX format in: ", path)
+
+  if (ncol(x) < 2) {
+    stop("Unexpected SINTAX output format in: ", path)
+  }
 
   tibble(
     ASV = x[[1]],
@@ -151,6 +158,35 @@ make_species_abundance <- function(parsed_df, seqtab_asv, out_file) {
   invisible(sp_df)
 }
 
+make_asv_taxonomy_abundance <- function(parsed_df, seqtab_asv, out_file) {
+  seqtab_df <- data.frame(
+    ASV = colnames(seqtab_asv),
+    t(seqtab_asv),
+    check.names = FALSE
+  )
+
+  merged <- parsed_df %>%
+    select(
+      ASV,
+      taxonomy,
+      kingdom, kingdom_conf,
+      phylum, phylum_conf,
+      class, class_conf,
+      order, order_conf,
+      family, family_conf,
+      genus, genus_conf,
+      species, species_conf
+    ) %>%
+    left_join(seqtab_df, by = "ASV")
+
+  write.csv(merged, out_file, row.names = FALSE)
+  invisible(merged)
+}
+
+# =========================
+# Run SINTAX across databases
+# =========================
+
 parsed_results <- list()
 summary_list <- list()
 
@@ -175,24 +211,48 @@ for (i in seq_len(nrow(reference_dbs))) {
   sx <- read_sintax_simple(out_tsv, db_name)
   sx_p <- parse_sintax(sx)
 
-  write_tsv(sx_p, file.path("results", paste0("asv_sintax_", db_name, "_parsed.tsv")))
-
-  asv_tax <- asv_lookup %>% left_join(sx_p, by = "ASV")
-  write_tsv(asv_tax, file.path("results", paste0("asv_taxonomy_", db_name, ".tsv")))
-
-  make_species_abundance(
+  # Parsed raw SINTAX output
+  write_tsv(
     sx_p,
-    seqtab_asv,
-    file.path("results", paste0("species_abundance_", db_name, ".csv"))
+    file.path("results", paste0("asv_sintax_", db_name, "_parsed.tsv"))
+  )
+
+  # Lookup + taxonomy
+  asv_tax <- asv_lookup %>% left_join(sx_p, by = "ASV")
+  write_tsv(
+    asv_tax,
+    file.path("results", paste0("asv_taxonomy_", db_name, ".tsv"))
+  )
+
+  # Species abundance table
+  make_species_abundance(
+    parsed_df = sx_p,
+    seqtab_asv = seqtab_asv,
+    out_file = file.path("results", paste0("species_abundance_", db_name, ".csv"))
+  )
+
+  # ASV-level taxonomy + abundance table
+  make_asv_taxonomy_abundance(
+    parsed_df = sx_p,
+    seqtab_asv = seqtab_asv,
+    out_file = file.path("results", paste0("asv_taxonomy_abundance_", db_name, ".csv"))
   )
 
   parsed_results[[db_name]] <- sx_p
   summary_list[[db_name]] <- summarise_assignments(sx_p, db_name)
 }
 
+# =========================
+# Summary table
+# =========================
+
 summary_tbl <- bind_rows(summary_list)
 write_tsv(summary_tbl, file.path("results", "sintax_database_summary.tsv"))
 print(summary_tbl)
+
+# =========================
+# Database comparison table
+# =========================
 
 compare_tbl <- asv_lookup
 
@@ -212,40 +272,5 @@ for (db_name in names(parsed_results)) {
 }
 
 write_tsv(compare_tbl, file.path("results", "asv_taxonomy_compare.tsv"))
-
-# =========================
-# Create ASV abundance + taxonomy table
-# =========================
-
-for (db_name in names(parsed_results)) {
-
-  tax_df <- parsed_results[[db_name]]
-
-  seqtab_df <- data.frame(
-    ASV = colnames(seqtab_asv),
-    t(seqtab_asv),
-    check.names = FALSE
-  )
-
-  merged <- tax_df %>%
-    select(
-      ASV,
-      kingdom,
-      phylum,
-      class,
-      order,
-      family,
-      genus,
-      species
-    ) %>%
-    left_join(seqtab_df, by = "ASV")
-
-  write.csv(
-    merged,
-    file.path("results", paste0("asv_taxonomy_abundance_", db_name, ".csv")),
-    row.names = FALSE
-  )
-
-}
 
 cat("SINTAX complete\n")
