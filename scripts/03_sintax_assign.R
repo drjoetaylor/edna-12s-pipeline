@@ -213,4 +213,39 @@ for (db_name in names(parsed_results)) {
 
 write_tsv(compare_tbl, file.path("results", "asv_taxonomy_compare.tsv"))
 
+# =========================
+# Create ASV abundance + taxonomy table
+# =========================
+
+for (db_name in names(parsed_results)) {
+
+  tax_df <- parsed_results[[db_name]]
+
+  seqtab_df <- data.frame(
+    ASV = colnames(seqtab_asv),
+    t(seqtab_asv),
+    check.names = FALSE
+  )
+
+  merged <- tax_df %>%
+    select(
+      ASV,
+      kingdom,
+      phylum,
+      class,
+      order,
+      family,
+      genus,
+      species
+    ) %>%
+    left_join(seqtab_df, by = "ASV")
+
+  write.csv(
+    merged,
+    file.path("results", paste0("asv_taxonomy_abundance_", db_name, ".csv")),
+    row.names = FALSE
+  )
+
+}
+
 cat("SINTAX complete\n")
