@@ -8,4 +8,4 @@ MIDORI2_LONGEST_NUC_GB269_srRNA_SINTAX.fasta.gz
 
 The MIDORI database may remain gzipped. The pipeline will automatically unzip it during execution.
 
-These files are not included in the repository because they are large and may have redistribution restrictions.
+
